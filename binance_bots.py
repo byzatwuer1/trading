@@ -113,95 +113,7 @@ class BinanceFuturesBot:
             logging.error(f"Kline veri alma hatası: {e}")
             return pd.DataFrame()
 
-    def dark_cloud_cover(data):
-        """Kara Bulut Örtüsü (Dark Cloud Cover) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['open'][i] > data['close'][i - 1] and
-                data['close'][i] < (data['open'][i - 1] + data['close'][i - 1]) / 2 and
-                data['close'][i] < data['open'][i]):
-                return "SELL"
-        return "HOLD"
-    def hammer_pattern(df):
-        """Çekiç (Hammer) formasyonu"""
-        for i in range(1, len(df)):
-            body = abs(df['open'][i] - df['close'][i])
-            lower_shadow = df['low'][i] - min(df['open'][i], df['close'][i])
-            upper_shadow = max(df['open'][i], df['close'][i]) - df['high'][i]
-            if lower_shadow > 2 * body and upper_shadow < body and df['close'][i] > df['open'][i]:
-                return "BUY"
-        return "HOLD"
-    def rsi_strategy(df):
-        """RSI Stratejisi"""
-        if df['RSI'].iloc[-1] < 30:
-            return "BUY"
-        elif df['RSI'].iloc[-1] > 70:
-            return "SELL"
-        return "HOLD"
-    def inverted_hammer(data):
-        """Ters Çekiç (Inverted Hammer) formasyonu"""
-        for i in range(1, len(data['close'])):
-            body = abs(data['open'][i] - data['close'][i])
-            upper_shadow = data['high'][i] - max(data['open'][i], data['close'][i])
-            lower_shadow = min(data['open'][i], data['close'][i]) - data['low'][i]
-            if upper_shadow > 2 * body and lower_shadow < body and data['close'][i] > data['open'][i]:
-                return "BUY"
-        return "HOLD"
-    def bullish_engulfing(data):
-        """Yutan Boğa (Bullish Engulfing) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['close'][i] > data['open'][i] and
-                data['close'][i - 1] < data['open'][i - 1] and
-                data['close'][i] > data['open'][i - 1] and
-                data['open'][i] < data['close'][i - 1]):
-                return "BUY"
-        return "HOLD"
-    def bearish_engulfing(data):
-        """Yutan Ayı (Bearish Engulfing) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['close'][i] < data['open'][i] and
-                data['close'][i - 1] > data['open'][i - 1] and
-                data['close'][i] < data['open'][i - 1] and
-                data['open'][i] > data['close'][i - 1]):
-                return "SELL"
-        return "HOLD"
-    def ema_strategy(df):
-        """EMA Kesişim Stratejisi"""
-        if df['EMA_20'].iloc[-1] > df['SMA_20'].iloc[-1]:
-            return "BUY"
-        elif df['EMA_20'].iloc[-1] < df['SMA_20'].iloc[-1]:
-            return "SELL"
-        return "HOLD"
-    def doji_pattern(data):
-        """Doji formasyonu"""
-        for i in range(len(data['close'])):
-            body = abs(data['open'][i] - data['close'][i])
-            if body < (data['high'][i] - data['low'][i]) * 0.1:  # Gövde çok küçükse
-                return "CAUTION"
-        return "HOLD"
-    def morning_star(data):
-        """Sabah Yıldızı (Morning Star) formasyonu"""
-        for i in range(2, len(data['close'])):
-            if (data['close'][i - 2] < data['open'][i - 2] and  # Kırmızı mum
-                abs(data['close'][i - 1] - data['open'][i - 1]) < (data['high'][i - 1] - data['low'][i - 1]) * 0.1 and  # Doji
-                data['close'][i] > data['open'][i] and data['close'][i] > data['open'][i - 2]):  # Yeşil mum
-                return "BUY"
-        return "HOLD"
-    def three_white_soldiers(data):
-        """Üç Beyaz Asker (Three White Soldiers) formasyonu"""
-        for i in range(2, len(data['close'])):
-            if (data['close'][i] > data['open'][i] and
-                data['close'][i - 1] > data['open'][i - 1] and
-                data['close'][i - 2] > data['open'][i - 2] and
-                data['close'][i] > data['close'][i - 1] > data['close'][i - 2]):
-                return "BUY"
-        return "HOLD"
-    def bollinger_strategy(df):
-        """Bollinger Bands Stratejisi"""
-        if df['close'].iloc[-1] < df['BB_LOWER'].iloc[-1]:
-            return "BUY"
-        elif df['close'].iloc[-1] > df['BB_UPPER'].iloc[-1]:
-            return "SELL"
-        return "HOLD"
+
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Temel teknik indikatörleri hesapla"""
@@ -371,7 +283,106 @@ class BinanceFuturesBot:
             return None
 
     
-    
+    def rsi_strategy(self, df: pd.DataFrame) -> str:
+        """RSI Stratejisi"""
+        if df['RSI'].iloc[-1] < 30:
+            return "BUY"
+        elif df['RSI'].iloc[-1] > 70:
+            return "SELL"
+        return "HOLD"
+
+    def ema_strategy(self, df: pd.DataFrame) -> str:
+        """EMA Kesişim Stratejisi"""
+        if df['EMA_20'].iloc[-1] > df['SMA_20'].iloc[-1]:
+            return "BUY"
+        elif df['EMA_20'].iloc[-1] < df['SMA_20'].iloc[-1]:
+            return "SELL"
+        return "HOLD"
+
+    def bollinger_strategy(self, df: pd.DataFrame) -> str:
+        """Bollinger Bands Stratejisi"""
+        if df['close'].iloc[-1] < df['BB_LOWER'].iloc[-1]:
+            return "BUY"
+        elif df['close'].iloc[-1] > df['BB_UPPER'].iloc[-1]:
+            return "SELL"
+        return "HOLD"
+
+    def hammer_pattern(self, df: pd.DataFrame) -> str:
+        """Çekiç (Hammer) formasyonu"""
+        for i in range(1, len(df)):
+            body = abs(df['open'].iloc[i] - df['close'].iloc[i])
+            lower_shadow = df['low'].iloc[i] - min(df['open'].iloc[i], df['close'].iloc[i])
+            upper_shadow = max(df['open'].iloc[i], df['close'].iloc[i]) - df['high'].iloc[i]
+            if lower_shadow > 2 * body and upper_shadow < body and df['close'].iloc[i] > df['open'].iloc[i]:
+                return "BUY"
+        return "HOLD"
+
+    def dark_cloud_cover(self, df: pd.DataFrame) -> str:
+        """Kara Bulut Örtüsü (Dark Cloud Cover) formasyonu"""
+        for i in range(1, len(df)):
+            if (df['open'].iloc[i] > df['close'].iloc[i - 1] and
+                df['close'].iloc[i] < (df['open'].iloc[i - 1] + df['close'].iloc[i - 1]) / 2 and
+                df['close'].iloc[i] < df['open'].iloc[i]):
+                return "SELL"
+        return "HOLD"
+
+    def inverted_hammer(self, df: pd.DataFrame) -> str:
+        """Ters Çekiç (Inverted Hammer) formasyonu"""
+        for i in range(1, len(df)):
+            body = abs(df['open'].iloc[i] - df['close'].iloc[i])
+            upper_shadow = df['high'].iloc[i] - max(df['open'].iloc[i], df['close'].iloc[i])
+            lower_shadow = min(df['open'].iloc[i], df['close'].iloc[i]) - df['low'].iloc[i]
+            if upper_shadow > 2 * body and lower_shadow < body and df['close'].iloc[i] > df['open'].iloc[i]:
+                return "BUY"
+        return "HOLD"
+
+    def bullish_engulfing(self, df: pd.DataFrame) -> str:
+        """Yutan Boğa (Bullish Engulfing) formasyonu"""
+        for i in range(1, len(df)):
+            if (df['close'].iloc[i] > df['open'].iloc[i] and
+                df['close'].iloc[i - 1] < df['open'].iloc[i - 1] and
+                df['close'].iloc[i] > df['open'].iloc[i - 1] and
+                df['open'].iloc[i] < df['close'].iloc[i - 1]):
+                return "BUY"
+        return "HOLD"
+
+    def bearish_engulfing(self, df: pd.DataFrame) -> str:
+        """Yutan Ayı (Bearish Engulfing) formasyonu"""
+        for i in range(1, len(df)):
+            if (df['close'].iloc[i] < df['open'].iloc[i] and
+                df['close'].iloc[i - 1] > df['open'].iloc[i - 1] and
+                df['close'].iloc[i] < df['open'].iloc[i - 1] and
+                df['open'].iloc[i] > df['close'].iloc[i - 1]):
+                return "SELL"
+        return "HOLD"
+
+    def doji_pattern(self, df: pd.DataFrame) -> str:
+        """Doji formasyonu"""
+        for i in range(len(df)):
+            body = abs(df['open'].iloc[i] - df['close'].iloc[i])
+            if body < (df['high'].iloc[i] - df['low'].iloc[i]) * 0.1:
+                return "CAUTION"
+        return "HOLD"
+
+    def morning_star(self, df: pd.DataFrame) -> str:
+        """Sabah Yıldızı (Morning Star) formasyonu"""
+        for i in range(2, len(df)):
+            if (df['close'].iloc[i - 2] < df['open'].iloc[i - 2] and
+                abs(df['close'].iloc[i - 1] - df['open'].iloc[i - 1]) < (df['high'].iloc[i - 1] - df['low'].iloc[i - 1]) * 0.1 and
+                df['close'].iloc[i] > df['open'].iloc[i] and
+                df['close'].iloc[i] > df['open'].iloc[i - 2]):
+                return "BUY"
+        return "HOLD"
+
+    def three_white_soldiers(self, df: pd.DataFrame) -> str:
+        """Üç Beyaz Asker (Three White Soldiers) formasyonu"""
+        for i in range(2, len(df)):
+            if (df['close'].iloc[i] > df['open'].iloc[i] and
+                df['close'].iloc[i - 1] > df['open'].iloc[i - 1] and
+                df['close'].iloc[i - 2] > df['open'].iloc[i - 2] and
+                df['close'].iloc[i] > df['close'].iloc[i - 1] > df['close'].iloc[i - 2]):
+                return "BUY"
+        return "HOLD"
     
 
     def generate_ml_signals(self, df: pd.DataFrame) -> dict:
@@ -403,7 +414,7 @@ class BinanceFuturesBot:
                 'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
                 'SMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D'
             ]
-        
+    
             # Gerekli sütunların varlığını kontrol et
             missing_columns = [col for col in required_columns if col not in df.columns]
             if df.empty or missing_columns:
@@ -414,71 +425,71 @@ class BinanceFuturesBot:
             signals = []
 
             # RSI Stratejisi
-            rsi_signal = rsi_strategy(df)
+            rsi_signal = self.rsi_strategy(df)
             if rsi_signal != "HOLD":
                 signals.append(rsi_signal)
-        
+    
             # EMA Kesişim Stratejisi
-            ema_signal = ema_strategy(df)
+            ema_signal = self.ema_strategy(df)
             if ema_signal != "HOLD":
                 signals.append(ema_signal)
 
             # Bollinger Bands Stratejisi
-            bb_signal = bollinger_strategy(df)
+            bb_signal = self.bollinger_strategy(df)
             if bb_signal != "HOLD":
                 signals.append(bb_signal)
 
             # Çekiç (Hammer) Formasyonu
-            hammer_signal = hammer_pattern(df)
+            hammer_signal = self.hammer_pattern(df)
             if hammer_signal != "HOLD":
                 signals.append(hammer_signal)
-        
+    
             # Ters Çekiç (Inverted Hammer) Formasyonu
-            inverted_hammer_signal = inverted_hammer(df)
+            inverted_hammer_signal = self.inverted_hammer(df)
             if inverted_hammer_signal != "HOLD":
                 signals.append(inverted_hammer_signal)
 
             # Yutan Boğa (Bullish Engulfing) Formasyonu
-            bullish_engulfing_signal = bullish_engulfing(df)
+            bullish_engulfing_signal = self.bullish_engulfing(df)
             if bullish_engulfing_signal != "HOLD":
                 signals.append(bullish_engulfing_signal)
 
             # Yutan Ayı (Bearish Engulfing) Formasyonu
-            bearish_engulfing_signal = bearish_engulfing(df)
+            bearish_engulfing_signal = self.bearish_engulfing(df)
             if bearish_engulfing_signal != "HOLD":
                 signals.append(bearish_engulfing_signal)
 
-            # Yıldız Formasyonları (Doji)
-            doji_signal = doji_pattern(df)
+            # Doji Formasyonu
+            doji_signal = self.doji_pattern(df)
             if doji_signal != "HOLD":
                 signals.append(doji_signal)
 
-            #   Sabah Yıldızı (Morning Star) Formasyonu
-            morning_star_signal = morning_star(df)
+            # Sabah Yıldızı (Morning Star) Formasyonu
+            morning_star_signal = self.morning_star(df)
             if morning_star_signal != "HOLD":
                 signals.append(morning_star_signal)
 
             # Üç Beyaz Asker (Three White Soldiers) Formasyonu
-            three_white_soldiers_signal = three_white_soldiers(df)
+            three_white_soldiers_signal = self.three_white_soldiers(df)
             if three_white_soldiers_signal != "HOLD":
                 signals.append(three_white_soldiers_signal)
 
             # Kara Bulut Örtüsü (Dark Cloud Cover) Formasyonu
-            dark_cloud_cover_signal = dark_cloud_cover(df)
+            dark_cloud_cover_signal = self.dark_cloud_cover(df)
             if dark_cloud_cover_signal != "HOLD":
                 signals.append(dark_cloud_cover_signal)
 
-            # StochRSI Stratejisi
+            #    StochRSI Stratejisi
             if last_row['StochRSI_K'] < 0.2:
                 signals.append('BUY')
             elif last_row['StochRSI_K'] > 0.8:
                 signals.append('SELL')
-        
-        # Sinyal kararı
+    
+            # Sinyal kararı
             if signals:
                 buy_signals = signals.count('BUY')
                 sell_signals = signals.count('SELL')
-        
+    
                 if buy_signals > sell_signals:
                     return {'type': 'BUY', 'strength': buy_signals / len(signals)}
                 elif sell_signals > buy_signals:
@@ -489,6 +500,8 @@ class BinanceFuturesBot:
         except Exception as e:
             logging.error(f"Signal generation error: {str(e)}")
             return {'type': 'NONE', 'reason': 'error'}
+        
+        
     def _validate_signals(self, ml_signal: dict, technical_signal: dict) -> bool:
         """Sinyalleri doğrula"""
         try:
