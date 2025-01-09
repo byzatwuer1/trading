@@ -362,25 +362,29 @@ class BinanceFuturesBot:
             # Ichimoku hesaplaması
             try:
                 ichimoku = ta.ichimoku(df['high'], df['low'], df['close'])
-            
-                # Ichimoku bileşenlerini ayrı ayrı ekle
-                if isinstance(ichimoku, pd.DataFrame):
-                    column_mapping = {
-                    'ITS_9': 'ICHIMOKU_CONVERSION',
-                    'IKS_26': 'ICHIMOKU_BASE',
-                    'ISA_26': 'ICHIMOKU_SPAN_A',
-                    'ISB_52': 'ICHIMOKU_SPAN_B',
-                    'ICS_26': 'ICHIMOKU_CHIKOU'
-                    }
                 
+                # pandas_ta's actual column names for Ichimoku
+                if isinstance(ichimoku, pd.DataFrame):
+                    # Update column mapping to match pandas_ta output
+                    column_mapping = {
+                        'ISA_9': 'ICHIMOKU_CONVERSION',  # Conversion/Tenkan-sen
+                        'ISB_26': 'ICHIMOKU_BASE',       # Base/Kijun-sen
+                        'ITS_9': 'ICHIMOKU_SPAN_A',      # Leading Span A
+                        'IKS_26': 'ICHIMOKU_SPAN_B',     # Leading Span B
+                        'ICS_26': 'ICHIMOKU_CHIKOU'      # Lagging Span
+                    }
+                    
                     for old_col, new_col in column_mapping.items():
                         if old_col in ichimoku.columns:
                             df[new_col] = ichimoku[old_col]
-                        
+                        else:
+                            logging.warning(f"Missing Ichimoku column: {old_col}")
+                    
                 logging.info("Ichimoku indicators calculated successfully")
-            
+                
             except Exception as ichimoku_error:
                 logging.error(f"Ichimoku calculation error: {ichimoku_error}")
+                raise
 
             # ADX hesaplaması
             try:
@@ -403,6 +407,22 @@ class BinanceFuturesBot:
         except Exception as e:
             logging.error(f"İleri seviye indikatör hesaplama hatası: {str(e)}")
             return df
+
+    def validate_ichimoku_indicators(self, df: pd.DataFrame) -> bool:
+        """Validate if all required Ichimoku indicators are present"""
+        required_indicators = [
+            'ICHIMOKU_CONVERSION',
+            'ICHIMOKU_BASE',
+            'ICHIMOKU_SPAN_A',
+            'ICHIMOKU_SPAN_B'
+        ]
+        
+        missing = [ind for ind in required_indicators if ind not in df.columns]
+        if missing:
+            logging.warning(f"Missing Ichimoku indicators: {missing}")
+            return False
+        return True
+
     def _calculate_atr(self, symbol: str) -> float:
         """ATR hesapla"""
         try:
