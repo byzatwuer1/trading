@@ -410,11 +410,8 @@ class BinanceFuturesBot:
     def generate_signals(self, df: pd.DataFrame) -> dict:
         """Teknik analiz sinyalleri üret"""
         try:
-            required_columns = [
-                'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
-                'SMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D'
-            ]
-    
+            required_columns = ['RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER', 'StochRSI']
+        
             # Gerekli sütunların varlığını kontrol et
             missing_columns = [col for col in required_columns if col not in df.columns]
             if df.empty or missing_columns:
@@ -423,106 +420,181 @@ class BinanceFuturesBot:
 
             last_row = df.iloc[-1]
             signals = []
+            total_weight = 0
+        
+            # İndikatör ve Formasyon ağırlıkları
+            signal_weights = {
+                'RSI': 3,        # RSI sinyalleri için ağırlık
+                'MACD': 2,       # MACD sinyalleri için ağırlık
+                'BB': 2,         # Bollinger Bands sinyalleri için ağırlık
+                'ICHIMOKU': 2,   # Ichimoku sinyalleri için ağırlık
+                'STOCH': 1,      # StochRSI sinyalleri için ağırlık
+                'HAMMER': 2,     # Çekiç formasyonu ağırlığı
+                'INV_HAMMER': 2, # Ters çekiç formasyonu ağırlığı
+                'ENGULFING': 3,  # Yutan formasyonları ağırlığı
+                'DOJI': 1,       # Doji formasyonu ağırlığı
+                'MORNING_STAR': 3, # Sabah yıldızı formasyonu ağırlığı
+                'THREE_SOLDIERS': 3, # Üç beyaz asker formasyonu ağırlığı
+                'DARK_CLOUD': 2  # Kara bulut örtüsü formasyonu ağırlığı
+            }
 
-            # RSI Stratejisi
-            rsi_signal = self.rsi_strategy(df)
-            if rsi_signal != "HOLD":
-                signals.append(rsi_signal)
-    
-            # EMA Kesişim Stratejisi
-            ema_signal = self.ema_strategy(df)
-            if ema_signal != "HOLD":
-                signals.append(ema_signal)
+            # RSI Sinyali
+            if 'RSI' in df.columns:
+                rsi = last_row['RSI']
+                if rsi < 30:
+                    signals.extend(['BUY'] * signal_weights['RSI'])
+                elif rsi > 70:
+                    signals.extend(['SELL'] * signal_weights['RSI'])
+                total_weight += signal_weights['RSI']
 
-            # Bollinger Bands Stratejisi
-            bb_signal = self.bollinger_strategy(df)
-            if bb_signal != "HOLD":
-                signals.append(bb_signal)
+            # MACD Sinyali
+            if all(col in df.columns for col in ['MACD', 'MACD_SIGNAL']):
+                if last_row['MACD'] > last_row['MACD_SIGNAL']:
+                    signals.extend(['BUY'] * signal_weights['MACD'])
+                elif last_row['MACD'] < last_row['MACD_SIGNAL']:
+                    signals.extend(['SELL'] * signal_weights['MACD'])
+                total_weight += signal_weights['MACD']
+
+            # Bollinger Bands Sinyali
+            if all(col in df.columns for col in ['BB_UPPER', 'BB_LOWER']):
+                if last_row['close'] < last_row['BB_LOWER']:
+                    signals.extend(['BUY'] * signal_weights['BB'])
+                elif last_row['close'] > last_row['BB_UPPER']:
+                    signals.extend(['SELL'] * signal_weights['BB'])
+                total_weight += signal_weights['BB']
+
+            # Ichimoku Sinyali
+            ichimoku_columns = ['ICHIMOKU_CONVERSION', 'ICHIMOKU_BASE']
+            if all(col in df.columns for col in ichimoku_columns):
+                if last_row['ICHIMOKU_CONVERSION'] > last_row['ICHIMOKU_BASE']:
+                    signals.extend(['BUY'] * signal_weights['ICHIMOKU'])
+                elif last_row['ICHIMOKU_CONVERSION'] < last_row['ICHIMOKU_BASE']:
+                    signals.extend(['SELL'] * signal_weights['ICHIMOKU'])
+                total_weight += signal_weights['ICHIMOKU']
 
             # Çekiç (Hammer) Formasyonu
             hammer_signal = self.hammer_pattern(df)
             if hammer_signal != "HOLD":
-                signals.append(hammer_signal)
-    
+                signals.extend([hammer_signal] * signal_weights['HAMMER'])
+                total_weight += signal_weights['HAMMER']
+
             # Ters Çekiç (Inverted Hammer) Formasyonu
-            inverted_hammer_signal = self.inverted_hammer(df)
-            if inverted_hammer_signal != "HOLD":
-                signals.append(inverted_hammer_signal)
+            inv_hammer_signal = self.inverted_hammer(df)
+            if inv_hammer_signal != "HOLD":
+                signals.extend([inv_hammer_signal] * signal_weights['INV_HAMMER'])
+                total_weight += signal_weights['INV_HAMMER']
 
             # Yutan Boğa (Bullish Engulfing) Formasyonu
-            bullish_engulfing_signal = self.bullish_engulfing(df)
-            if bullish_engulfing_signal != "HOLD":
-                signals.append(bullish_engulfing_signal)
+            bullish_eng_signal = self.bullish_engulfing(df)
+            if bullish_eng_signal != "HOLD":
+                signals.extend([bullish_eng_signal] * signal_weights['ENGULFING'])
+                total_weight += signal_weights['ENGULFING']
 
-            # Yutan Ayı (Bearish Engulfing) Formasyonu
-            bearish_engulfing_signal = self.bearish_engulfing(df)
-            if bearish_engulfing_signal != "HOLD":
-                signals.append(bearish_engulfing_signal)
+        # Yutan Ayı (Bearish Engulfing) Formasyonu
+            bearish_eng_signal = self.bearish_engulfing(df)
+            if bearish_eng_signal != "HOLD":
+                signals.extend([bearish_eng_signal] * signal_weights['ENGULFING'])
+                total_weight += signal_weights['ENGULFING']
 
             # Doji Formasyonu
             doji_signal = self.doji_pattern(df)
             if doji_signal != "HOLD":
-                signals.append(doji_signal)
+                signals.extend([doji_signal] * signal_weights['DOJI'])
+                total_weight += signal_weights['DOJI']
 
             # Sabah Yıldızı (Morning Star) Formasyonu
             morning_star_signal = self.morning_star(df)
             if morning_star_signal != "HOLD":
-                signals.append(morning_star_signal)
+                signals.extend([morning_star_signal] * signal_weights['MORNING_STAR'])
+                total_weight += signal_weights['MORNING_STAR']
 
             # Üç Beyaz Asker (Three White Soldiers) Formasyonu
-            three_white_soldiers_signal = self.three_white_soldiers(df)
-            if three_white_soldiers_signal != "HOLD":
-                signals.append(three_white_soldiers_signal)
+            three_soldiers_signal = self.three_white_soldiers(df)
+            if three_soldiers_signal != "HOLD":
+                signals.extend([three_soldiers_signal] * signal_weights['THREE_SOLDIERS'])
+                total_weight += signal_weights['THREE_SOLDIERS']
 
             # Kara Bulut Örtüsü (Dark Cloud Cover) Formasyonu
-            dark_cloud_cover_signal = self.dark_cloud_cover(df)
-            if dark_cloud_cover_signal != "HOLD":
-                signals.append(dark_cloud_cover_signal)
+            dark_cloud_signal = self.dark_cloud_cover(df)
+            if dark_cloud_signal != "HOLD":
+                signals.extend([dark_cloud_signal] * signal_weights['DARK_CLOUD'])
+                total_weight += signal_weights['DARK_CLOUD']
 
-            #    StochRSI Stratejisi
-            if last_row['StochRSI_K'] < 0.2:
-                signals.append('BUY')
-            elif last_row['StochRSI_K'] > 0.8:
-                signals.append('SELL')
-    
+            # StochRSI Stratejisi
+            if 'StochRSI' in df.columns:
+                if last_row['StochRSI'] < 0.2:
+                    signals.extend(['BUY'] * signal_weights['STOCH'])
+                elif last_row['StochRSI'] > 0.8:
+                    signals.extend(['SELL'] * signal_weights['STOCH'])
+                total_weight += signal_weights['STOCH']
+
             # Sinyal kararı
-            if signals:
+            if signals and total_weight > 0:
                 buy_signals = signals.count('BUY')
                 sell_signals = signals.count('SELL')
-    
-                if buy_signals > sell_signals:
-                    return {'type': 'BUY', 'strength': buy_signals / len(signals)}
-                elif sell_signals > buy_signals:
-                    return {'type': 'SELL', 'strength': sell_signals / len(signals)}
+                total_signals = len(signals)
 
-            return {'type': 'HOLD', 'strength': 0}
+                if buy_signals > sell_signals:
+                    strength = buy_signals / total_signals
+                    confidence = buy_signals / total_weight
+                    return {
+                        'type': 'BUY', 
+                        'strength': strength, 
+                        'confidence': confidence,
+                        'buy_count': buy_signals,
+                        'sell_count': sell_signals,
+                        'total_signals': total_signals
+                    }
+                elif sell_signals > buy_signals:
+                    strength = sell_signals / total_signals
+                    confidence = sell_signals / total_weight
+                    return {
+                        'type': 'SELL', 
+                        'strength': strength, 
+                        'confidence': confidence,
+                        'buy_count': buy_signals,
+                        'sell_count': sell_signals,
+                        'total_signals': total_signals
+                    }
+
+            return {'type': 'HOLD', 'strength': 0, 'confidence': 0, 'buy_count': 0, 'sell_count': 0, 'total_signals': 0}
 
         except Exception as e:
             logging.error(f"Signal generation error: {str(e)}")
             return {'type': 'NONE', 'reason': 'error'}
         
-        
+
     def _validate_signals(self, ml_signal: dict, technical_signal: dict) -> bool:
         """Sinyalleri doğrula"""
         try:
             logging.info(f"ML Sinyal: {ml_signal}")
             logging.info(f"Teknik Sinyal: {technical_signal}")
         
-            # Sinyal eşleşmesi için daha esnek kurallar
+            signal_details = (
+                f"Sinyal İstatistikleri:\n"
+                f"Alış Sinyalleri: {technical_signal.get('buy_count', 0)}\n"
+                f"Satış Sinyalleri: {technical_signal.get('sell_count', 0)}\n"
+                f"Toplam Sinyal: {technical_signal.get('total_signals', 0)}\n"
+                f"Sinyal Gücü: {technical_signal.get('strength', 0):.2f}\n"
+                f"Güven Seviyesi: {technical_signal.get('confidence', 0):.2f}\n"
+                f"ML Olasılığı: {ml_signal.get('probability', 0):.2f}"
+            )
+            logging.info(signal_details)
+    
             if technical_signal['type'] in ['BUY', 'SELL']:
                 signal_strength = technical_signal.get('strength', 0)
-            
-                # Her iki sinyal de aynı yönde ve güç yeterli ise
-                if (ml_signal['type'] == technical_signal['type'] and 
-                    signal_strength > 0.3 and 
-                    ml_signal['probability'] > 0.6):
-                
-                    logging.info(f"Sinyal onaylandı: {technical_signal['type']} "
-                            f"(Güç: {signal_strength}, ML Olasılık: {ml_signal['probability']})")
-                    return True
-                
-            return False
+                signal_confidence = technical_signal.get('confidence', 0)
         
+                if (ml_signal['type'] == technical_signal['type'] and 
+                    signal_strength > 0.6 and
+                    signal_confidence > 0.5 and
+                    ml_signal['probability'] > 0.55):
+            
+                    logging.info(f"✅ Sinyal Onaylandı: {technical_signal['type']}\n{signal_details}")
+                    return True
+            
+            return False
+    
         except Exception as e:
             logging.error(f"Sinyal doğrulama hatası: {e}")
             return False
