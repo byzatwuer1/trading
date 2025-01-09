@@ -238,25 +238,7 @@ class BinanceFuturesBot:
             df['DI_minus'] = adx['DMN_14']
 
             # Ichimoku Cloud - Düzeltilmiş versiyon
-          # Ichimoku Cloud - Düzeltilmiş versiyon
-            # Ichimoku Cloud - Düzeltilmiş versiyon
-            try:
-                ichimoku = ta.ichimoku(df['high'], df['low'], df['close'])
-                if isinstance(ichimoku, pd.DataFrame):
-                    logging.info(f"Ichimoku columns: {ichimoku.columns.tolist()}")  # Add logging to check column names
-                    ichimoku_columns = {
-                        'ISA_9': 'ICHIMOKU_SPAN_A',
-                        'ISB_26': 'ICHIMOKU_SPAN_B',
-                        'ITS_9': 'ICHIMOKU_CONVERSION',
-                        'IKS_26': 'ICHIMOKU_BASE'
-                    }
-                    for old_name, new_name in ichimoku_columns.items():
-                        if old_name in ichimoku.columns:
-                            df[new_name] = ichimoku[old_name]
-                        else:
-                            logging.warning(f"Missing Ichimoku column: {old_name}")  # Add logging for missing columns
-            except Exception as e:
-                logging.error(f"Ichimoku calculation error: {str(e)}")
+          
 
             # ---- MUM FORMASYONLARI ----
             df['DOJI'] = self.calculate_doji(df)
@@ -288,7 +270,7 @@ class BinanceFuturesBot:
             required_indicators = [
                 'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
                 'SMA_20', 'EMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D',
-                'ADX', 'ICHIMOKU_CONVERSION', 'ICHIMOKU_BASE'
+                'ADX'
             ]
 
             missing_indicators = [ind for ind in required_indicators if ind not in df.columns]
@@ -349,12 +331,21 @@ class BinanceFuturesBot:
             logging.error(f"VWAP hesaplama hatası: {str(e)}")
             return pd.Series(0, index=df.index)
 
+    def verify_indicators(self, df: pd.DataFrame) -> None:
+        """İndikatörlerin varlığını ve geçerliliğini kontrol et"""
+        required_indicators = ['ICHIMOKU_CONVERSION', 'ICHIMOKU_BASE']
 
+        for indicator in required_indicators:
+            if indicator not in df.columns:
+                logging.error(f"Missing indicator: {indicator}")
+            elif df[indicator].isnull().any():
+                logging.warning(f"NaN values found in {indicator}")
+            else:
+                logging.info(f"{indicator} calculated successfully")
 
     def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """İleri seviye indikatörleri hesapla"""
         try:
-            # DataFrame kontrolü
             if df.empty:
                 logging.error("DataFrame is empty. Cannot calculate advanced indicators.")
                 return df
@@ -362,67 +353,96 @@ class BinanceFuturesBot:
             # Ichimoku hesaplaması
             try:
                 ichimoku = ta.ichimoku(df['high'], df['low'], df['close'])
-                
-                # pandas_ta's actual column names for Ichimoku
+
+                # Debug için mevcut sütunları logla
                 if isinstance(ichimoku, pd.DataFrame):
-                    # Update column mapping to match pandas_ta output
+                    logging.debug(f"Available Ichimoku columns: {ichimoku.columns.tolist()}")
+
+                    # Güncel pandas_ta sütun isimleri
                     column_mapping = {
-                        'ISA_9': 'ICHIMOKU_CONVERSION',  # Conversion/Tenkan-sen
-                        'ISB_26': 'ICHIMOKU_BASE',       # Base/Kijun-sen
-                        'ITS_9': 'ICHIMOKU_SPAN_A',      # Leading Span A
-                        'IKS_26': 'ICHIMOKU_SPAN_B',     # Leading Span B
-                        'ICS_26': 'ICHIMOKU_CHIKOU'      # Lagging Span
+                        'TENKAN_9': 'ICHIMOKU_CONVERSION',
+                        'KIJUN_26': 'ICHIMOKU_BASE',
+                        'SENKOU_A_26': 'ICHIMOKU_SPAN_A',
+                        'SENKOU_B_52': 'ICHIMOKU_SPAN_B',
+                        'CHIKOU_26': 'ICHIMOKU_CHIKOU'
                     }
-                    
-                    for old_col, new_col in column_mapping.items():
-                        if old_col in ichimoku.columns:
-                            df[new_col] = ichimoku[old_col]
-                        else:
-                            logging.warning(f"Missing Ichimoku column: {old_col}")
-                    
-                logging.info("Ichimoku indicators calculated successfully")
-                
+
+                    # Eğer yeni sütun isimleri çalışmazsa manuel hesaplama yap
+                    if not any(col in ichimoku.columns for col in column_mapping.keys()):
+                        # Manuel Ichimoku hesaplama
+                        period9_high = df['high'].rolling(window=9).max()
+                        period9_low = df['low'].rolling(window=9).min()
+                        df['ICHIMOKU_CONVERSION'] = (period9_high + period9_low) / 2
+
+                        period26_high = df['high'].rolling(window=26).max()
+                        period26_low = df['low'].rolling(window=26).min()
+                        df['ICHIMOKU_BASE'] = (period26_high + period26_low) / 2
+
+                        period52_high = df['high'].rolling(window=52).max()
+                        period52_low = df['low'].rolling(window=52).min()
+                        df['ICHIMOKU_SPAN_B'] = (period52_high + period52_low) / 2
+
+                        df['ICHIMOKU_SPAN_A'] = (df['ICHIMOKU_CONVERSION'] + df['ICHIMOKU_BASE']) / 2
+                        df['ICHIMOKU_CHIKOU'] = df['close'].shift(-26)
+                    else:
+                        # pandas_ta sütunlarını eşle
+                        for old_col, new_col in column_mapping.items():
+                            if old_col in ichimoku.columns:
+                                df[new_col] = ichimoku[old_col]
+
+                    # Kontrol et
+                    required_cols = ['ICHIMOKU_CONVERSION', 'ICHIMOKU_BASE']
+                    if all(col in df.columns for col in required_cols):
+                        logging.info("Ichimoku indicators calculated successfully")
+                    else:
+                        logging.warning("Some Ichimoku indicators are missing")
+
+                else:
+                    # Eğer DataFrame dönmezse manuel hesapla
+                    period9_high = df['high'].rolling(window=9).max()
+                    period9_low = df['low'].rolling(window=9).min()
+                    df['ICHIMOKU_CONVERSION'] = (period9_high + period9_low) / 2
+
+                    period26_high = df['high'].rolling(window=26).max()
+                    period26_low = df['low'].rolling(window=26).min()
+                    df['ICHIMOKU_BASE'] = (period26_high + period26_low) / 2
+
+                    logging.info("Ichimoku indicators calculated manually")
+
             except Exception as ichimoku_error:
                 logging.error(f"Ichimoku calculation error: {ichimoku_error}")
-                raise
+                # Hata durumunda manuel hesaplama
+                period9_high = df['high'].rolling(window=9).max()
+                period9_low = df['low'].rolling(window=9).min()
+                df['ICHIMOKU_CONVERSION'] = (period9_high + period9_low) / 2
 
-            # ADX hesaplaması
+                period26_high = df['high'].rolling(window=26).max()
+                period26_low = df['low'].rolling(window=26).min()
+                df['ICHIMOKU_BASE'] = (period26_high + period26_low) / 2
+
+            # ADX hesaplaması (mevcut kod)
             try:
                 adx = ta.adx(df['high'], df['low'], df['close'])
                 if isinstance(adx, pd.DataFrame):
                     if 'ADX_14' in adx.columns:
                         df['ADX'] = adx['ADX_14']
                     elif 'ADX' in adx.columns:
-                     df['ADX'] = adx['ADX']
-                logging.info("ADX calculated successfully")
-            
+                        df['ADX'] = adx['ADX']
+                    logging.info("ADX calculated successfully")
+
             except Exception as adx_error:
                 logging.error(f"ADX calculation error: {adx_error}")
 
-            # NaN değerleri temizle - Update this part
-            df = df.ffill().bfill()  # Using the recommended methods instead of fillna
-        
+            # NaN değerleri temizle
+            df = df.ffill().bfill()
+
             return df
 
         except Exception as e:
             logging.error(f"İleri seviye indikatör hesaplama hatası: {str(e)}")
+            self.verify_indicators(df)
             return df
-
-    def validate_ichimoku_indicators(self, df: pd.DataFrame) -> bool:
-        """Validate if all required Ichimoku indicators are present"""
-        required_indicators = [
-            'ICHIMOKU_CONVERSION',
-            'ICHIMOKU_BASE',
-            'ICHIMOKU_SPAN_A',
-            'ICHIMOKU_SPAN_B'
-        ]
-        
-        missing = [ind for ind in required_indicators if ind not in df.columns]
-        if missing:
-            logging.warning(f"Missing Ichimoku indicators: {missing}")
-            return False
-        return True
-
+            
     def _calculate_atr(self, symbol: str) -> float:
         """ATR hesapla"""
         try:
