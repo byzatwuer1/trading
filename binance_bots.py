@@ -113,7 +113,95 @@ class BinanceFuturesBot:
             logging.error(f"Kline veri alma hatası: {e}")
             return pd.DataFrame()
 
-
+    def dark_cloud_cover(data):
+        """Kara Bulut Örtüsü (Dark Cloud Cover) formasyonu"""
+        for i in range(1, len(data['close'])):
+            if (data['open'][i] > data['close'][i - 1] and
+                data['close'][i] < (data['open'][i - 1] + data['close'][i - 1]) / 2 and
+                data['close'][i] < data['open'][i]):
+                return "SELL"
+        return "HOLD"
+    def hammer_pattern(df):
+        """Çekiç (Hammer) formasyonu"""
+        for i in range(1, len(df)):
+            body = abs(df['open'][i] - df['close'][i])
+            lower_shadow = df['low'][i] - min(df['open'][i], df['close'][i])
+            upper_shadow = max(df['open'][i], df['close'][i]) - df['high'][i]
+            if lower_shadow > 2 * body and upper_shadow < body and df['close'][i] > df['open'][i]:
+                return "BUY"
+        return "HOLD"
+    def rsi_strategy(df):
+        """RSI Stratejisi"""
+        if df['RSI'].iloc[-1] < 30:
+            return "BUY"
+        elif df['RSI'].iloc[-1] > 70:
+            return "SELL"
+        return "HOLD"
+    def inverted_hammer(data):
+        """Ters Çekiç (Inverted Hammer) formasyonu"""
+        for i in range(1, len(data['close'])):
+            body = abs(data['open'][i] - data['close'][i])
+            upper_shadow = data['high'][i] - max(data['open'][i], data['close'][i])
+            lower_shadow = min(data['open'][i], data['close'][i]) - data['low'][i]
+            if upper_shadow > 2 * body and lower_shadow < body and data['close'][i] > data['open'][i]:
+                return "BUY"
+        return "HOLD"
+    def bullish_engulfing(data):
+        """Yutan Boğa (Bullish Engulfing) formasyonu"""
+        for i in range(1, len(data['close'])):
+            if (data['close'][i] > data['open'][i] and
+                data['close'][i - 1] < data['open'][i - 1] and
+                data['close'][i] > data['open'][i - 1] and
+                data['open'][i] < data['close'][i - 1]):
+                return "BUY"
+        return "HOLD"
+    def bearish_engulfing(data):
+        """Yutan Ayı (Bearish Engulfing) formasyonu"""
+        for i in range(1, len(data['close'])):
+            if (data['close'][i] < data['open'][i] and
+                data['close'][i - 1] > data['open'][i - 1] and
+                data['close'][i] < data['open'][i - 1] and
+                data['open'][i] > data['close'][i - 1]):
+                return "SELL"
+        return "HOLD"
+    def ema_strategy(df):
+        """EMA Kesişim Stratejisi"""
+        if df['EMA_20'].iloc[-1] > df['SMA_20'].iloc[-1]:
+            return "BUY"
+        elif df['EMA_20'].iloc[-1] < df['SMA_20'].iloc[-1]:
+            return "SELL"
+        return "HOLD"
+    def doji_pattern(data):
+        """Doji formasyonu"""
+        for i in range(len(data['close'])):
+            body = abs(data['open'][i] - data['close'][i])
+            if body < (data['high'][i] - data['low'][i]) * 0.1:  # Gövde çok küçükse
+                return "CAUTION"
+        return "HOLD"
+    def morning_star(data):
+        """Sabah Yıldızı (Morning Star) formasyonu"""
+        for i in range(2, len(data['close'])):
+            if (data['close'][i - 2] < data['open'][i - 2] and  # Kırmızı mum
+                abs(data['close'][i - 1] - data['open'][i - 1]) < (data['high'][i - 1] - data['low'][i - 1]) * 0.1 and  # Doji
+                data['close'][i] > data['open'][i] and data['close'][i] > data['open'][i - 2]):  # Yeşil mum
+                return "BUY"
+        return "HOLD"
+    def three_white_soldiers(data):
+        """Üç Beyaz Asker (Three White Soldiers) formasyonu"""
+        for i in range(2, len(data['close'])):
+            if (data['close'][i] > data['open'][i] and
+                data['close'][i - 1] > data['open'][i - 1] and
+                data['close'][i - 2] > data['open'][i - 2] and
+                data['close'][i] > data['close'][i - 1] > data['close'][i - 2]):
+                return "BUY"
+        return "HOLD"
+    def bollinger_strategy(df):
+        """Bollinger Bands Stratejisi"""
+        if df['close'].iloc[-1] < df['BB_LOWER'].iloc[-1]:
+            return "BUY"
+        elif df['close'].iloc[-1] > df['BB_UPPER'].iloc[-1]:
+            return "SELL"
+        return "HOLD"
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Temel teknik indikatörleri hesapla"""
@@ -135,26 +223,31 @@ class BinanceFuturesBot:
             df['BB_MIDDLE'] = bollinger['BBM_20_2.0']
             df['BB_LOWER'] = bollinger['BBL_20_2.0']
 
-            # Moving Averages (SMA ve EMA)
+            # Moving Averages
             df['SMA_20'] = ta.sma(df['close'], length=20)
-            df['EMA_50'] = ta.ema(df['close'], length=50)
-            df['EMA_200'] = ta.ema(df['close'], length=200)
-
+            df['EMA_20'] = ta.ema(df['close'], length=20)
+    
             # StochRSI hesaplama
-            df['StochRSI'] = ta.stochrsi(close=df['close'])
+            stochrsi = ta.stochrsi(df['close'], length=14)
+            df['StochRSI_K'] = stochrsi['STOCHRSIk_14_14_3_3']
+            df['StochRSI_D'] = stochrsi['STOCHRSId_14_14_3_3']
 
             # NaN değerleri temizle
             df = df.ffill().bfill()
 
             # Hesaplanan göstergeleri kontrol et
-            required_indicators = ['RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER', 'SMA_20', 'EMA_50', 'EMA_200', 'StochRSI']
+            required_indicators = ['RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER', 'StochRSI_K', 'StochRSI_D']
             missing_indicators = [ind for ind in required_indicators if ind not in df.columns]
 
             if missing_indicators:
                 logging.warning(f"Missing indicators after calculation: {missing_indicators}")
             else:
                 logging.info("All required indicators calculated successfully")
+    
+            return df
 
+        except Exception as e:
+            logging.error(f"İndikatör hesaplama hatası: {str(e)}")
             return df
 
         except Exception as e:
@@ -284,75 +377,8 @@ class BinanceFuturesBot:
 
     
     
-    def dark_cloud_cover(data):
-        """Kara Bulut Örtüsü (Dark Cloud Cover) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['open'][i] > data['close'][i - 1] and
-                data['close'][i] < (data['open'][i - 1] + data['close'][i - 1]) / 2 and
-                data['close'][i] < data['open'][i]):
-                return "SELL"
-        return "HOLD"
-    def inverted_hammer(data):
-        """Ters Çekiç (Inverted Hammer) formasyonu"""
-        for i in range(1, len(data['close'])):
-            body = abs(data['open'][i] - data['close'][i])
-            upper_shadow = data['high'][i] - max(data['open'][i], data['close'][i])
-            lower_shadow = min(data['open'][i], data['close'][i]) - data['low'][i]
-            if upper_shadow > 2 * body and lower_shadow < body and data['close'][i] > data['open'][i]:
-                return "BUY"
-        return "HOLD"
-    def inverted_hammer(data):
-        """Ters Çekiç (Inverted Hammer) formasyonu"""
-        for i in range(1, len(data['close'])):
-            body = abs(data['open'][i] - data['close'][i])
-            upper_shadow = data['high'][i] - max(data['open'][i], data['close'][i])
-            lower_shadow = min(data['open'][i], data['close'][i]) - data['low'][i]
-            if upper_shadow > 2 * body and lower_shadow < body and data['close'][i] > data['open'][i]:
-                return "BUY"
-        return "HOLD"
-    def bullish_engulfing(data):
-        """Yutan Boğa (Bullish Engulfing) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['close'][i] > data['open'][i] and
-                data['close'][i - 1] < data['open'][i - 1] and
-                data['close'][i] > data['open'][i - 1] and
-                data['open'][i] < data['close'][i - 1]):
-                return "BUY"
-        return "HOLD"
-    def bearish_engulfing(data):
-        """Yutan Ayı (Bearish Engulfing) formasyonu"""
-        for i in range(1, len(data['close'])):
-            if (data['close'][i] < data['open'][i] and
-                data['close'][i - 1] > data['open'][i - 1] and
-                data['close'][i] < data['open'][i - 1] and
-                data['open'][i] > data['close'][i - 1]):
-                return "SELL"
-        return "HOLD"
-    def doji_pattern(data):
-        """Doji formasyonu"""
-        for i in range(len(data['close'])):
-            body = abs(data['open'][i] - data['close'][i])
-            if body < (data['high'][i] - data['low'][i]) * 0.1:  # Gövde çok küçükse
-                return "CAUTION"
-        return "HOLD"
-    def morning_star(data):
-        """Sabah Yıldızı (Morning Star) formasyonu"""
-        for i in range(2, len(data['close'])):
-            if (data['close'][i - 2] < data['open'][i - 2] and  # Kırmızı mum
-                abs(data['close'][i - 1] - data['open'][i - 1]) < (data['high'][i - 1] - data['low'][i - 1]) * 0.1 and  # Doji
-                data['close'][i] > data['open'][i] and data['close'][i] > data['open'][i - 2]):  # Yeşil mum
-                return "BUY"
-        return "HOLD"
-    def three_white_soldiers(data):
-        """Üç Beyaz Asker (Three White Soldiers) formasyonu"""
-        for i in range(2, len(data['close'])):
-            if (data['close'][i] > data['open'][i] and
-                data['close'][i - 1] > data['open'][i - 1] and
-                data['close'][i - 2] > data['open'][i - 2] and
-                data['close'][i] > data['close'][i - 1] > data['close'][i - 2]):
-                return "BUY"
-        return "HOLD"
- 
+    
+
     def generate_ml_signals(self, df: pd.DataFrame) -> dict:
         """ML sinyalleri üret"""
         try:
@@ -378,7 +404,10 @@ class BinanceFuturesBot:
     def generate_signals(self, df: pd.DataFrame) -> dict:
         """Teknik analiz sinyalleri üret"""
         try:
-            required_columns = ['RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER', 'SMA_20', 'EMA_50', 'EMA_200', 'StochRSI']
+            required_columns = [
+                'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
+                'SMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D'
+            ]
         
             # Gerekli sütunların varlığını kontrol et
             missing_columns = [col for col in required_columns if col not in df.columns]
@@ -443,6 +472,12 @@ class BinanceFuturesBot:
             dark_cloud_cover_signal = dark_cloud_cover(df)
             if dark_cloud_cover_signal != "HOLD":
                 signals.append(dark_cloud_cover_signal)
+
+            # StochRSI Stratejisi
+            if last_row['StochRSI_K'] < 0.2:
+                signals.append('BUY')
+            elif last_row['StochRSI_K'] > 0.8:
+                signals.append('SELL')
         
             # Sinyal kararı
             if signals:
