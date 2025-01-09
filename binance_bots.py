@@ -636,154 +636,280 @@ class BinanceFuturesBot:
                 'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
                 'StochRSI_K', 'StochRSI_D', 'StochRSI'
             ]
-
+    
             # Gerekli sütunların kontrolü
             missing_columns = [col for col in required_columns if col not in df.columns]
             if df.empty or missing_columns:
                 logging.warning(f"Missing columns for signal generation: {missing_columns}")
                 return {'type': 'NONE', 'reason': 'missing_data'}
-
+    
             last_row = df.iloc[-1]
-            signals = []
-            total_signals = 0
-
-            # Sinyal ağırlıkları
-            signal_weights = {
-                'RSI': 3,
-                'MACD': 2,
-                'BB': 2,
-                'STOCH': 1,
-                'ICHIMOKU': 2,
-                'HAMMER': 2,
-                'DOJI': 1
+            signal_strength = 0
+            total_weight = 0
+            buy_score = 0
+            sell_score = 0
+    
+            # Ağırlıklar ve skorlar
+            weights = {
+                'TECHNICAL': {
+                    'RSI': 15,
+                    'MACD': 15,
+                    'BB': 15,
+                    'STOCH': 15
+                },
+                'PATTERN': {
+                    'HAMMER': 10,
+                    'DOJI': 5,
+                    'ENGULFING': 10,
+                    'MORNING_STAR': 8,
+                    'EVENING_STAR': 8
+                }
             }
-
-            # RSI Sinyali
+    
+            # 1. Teknik İndikatör Sinyalleri
+            # RSI Analizi
             if 'RSI' in df.columns:
-                total_signals += signal_weights['RSI']
-                if last_row['RSI'] < 30:
-                    signals.extend(['BUY'] * signal_weights['RSI'])
-                elif last_row['RSI'] > 70:
-                    signals.extend(['SELL'] * signal_weights['RSI'])
-
-            # MACD Sinyali
+                weight = weights['TECHNICAL']['RSI']
+                total_weight += weight
+                rsi = last_row['RSI']
+                if rsi < 30:
+                    buy_score += weight * ((30 - rsi) / 30)
+                elif rsi > 70:
+                    sell_score += weight * ((rsi - 70) / 30)
+    
+            # MACD Analizi
             if all(col in df.columns for col in ['MACD', 'MACD_SIGNAL']):
-                total_signals += signal_weights['MACD']
+                weight = weights['TECHNICAL']['MACD']
+                total_weight += weight
                 if last_row['MACD'] > last_row['MACD_SIGNAL']:
-                    signals.extend(['BUY'] * signal_weights['MACD'])
+                    buy_score += weight * (abs(last_row['MACD'] - last_row['MACD_SIGNAL']) / abs(last_row['MACD']))
                 else:
-                    signals.extend(['SELL'] * signal_weights['MACD'])
-
-            # Bollinger Bands Sinyali
+                    sell_score += weight * (abs(last_row['MACD'] - last_row['MACD_SIGNAL']) / abs(last_row['MACD']))
+    
+            # Bollinger Bands Analizi
             if all(col in df.columns for col in ['BB_UPPER', 'BB_LOWER']):
-                total_signals += signal_weights['BB']
+                weight = weights['TECHNICAL']['BB']
+                total_weight += weight
+                bb_range = last_row['BB_UPPER'] - last_row['BB_LOWER']
                 if last_row['close'] < last_row['BB_LOWER']:
-                    signals.extend(['BUY'] * signal_weights['BB'])
+                    distance = (last_row['BB_LOWER'] - last_row['close']) / bb_range
+                    buy_score += weight * min(distance, 1.0)
                 elif last_row['close'] > last_row['BB_UPPER']:
-                    signals.extend(['SELL'] * signal_weights['BB'])
-
-            # StochRSI Sinyali
+                    distance = (last_row['close'] - last_row['BB_UPPER']) / bb_range
+                    sell_score += weight * min(distance, 1.0)
+    
+            # StochRSI Analizi
             if all(col in df.columns for col in ['StochRSI_K', 'StochRSI_D']):
-                total_signals += signal_weights['STOCH']
+                weight = weights['TECHNICAL']['STOCH']
+                total_weight += weight
                 if last_row['StochRSI_K'] < 20 and last_row['StochRSI_D'] < 20:
-                    signals.extend(['BUY'] * signal_weights['STOCH'])
+                    buy_score += weight * (1 - max(last_row['StochRSI_K'], last_row['StochRSI_D']) / 20)
                 elif last_row['StochRSI_K'] > 80 and last_row['StochRSI_D'] > 80:
-                    signals.extend(['SELL'] * signal_weights['STOCH'])
-
-            # Formasyon Sinyalleri
-            # Hammer
-            hammer_signal = self.hammer_pattern(df)
-            if hammer_signal != "HOLD":
-                signals.extend([hammer_signal] * signal_weights['HAMMER'])
-                total_signals += signal_weights['HAMMER']
-
+                    sell_score += weight * (min(last_row['StochRSI_K'], last_row['StochRSI_D']) - 80) / 20
+    
+            # 2. Formasyon Sinyalleri
+            # Çekiç (Hammer)
+            hammer = self.hammer_pattern(df)
+            if hammer == "BUY":
+                weight = weights['PATTERN']['HAMMER']
+                total_weight += weight
+                buy_score += weight
+    
             # Doji
-            doji_signal = self.doji_pattern(df)
-            if doji_signal != "HOLD":
-                signals.extend([doji_signal] * signal_weights['DOJI'])
-                total_signals += signal_weights['DOJI']
-
-            # Sinyal analizi ve sonuç üretme
-            if signals:
-                buy_signals = signals.count('BUY')
-                sell_signals = signals.count('SELL')
-                total_count = len(signals)
-
-                signal_info = {
-                    'buy_count': buy_signals,
-                    'sell_count': sell_signals,
-                    'total_signals': total_count,
-                    'total_indicators': total_signals,
+            doji = self.doji_pattern(df)
+            if doji == "CAUTION":
+                weight = weights['PATTERN']['DOJI']
+                total_weight += weight
+                # Doji trendin tersine sinyal verir
+                if buy_score > sell_score:
+                    sell_score += weight
+                else:
+                    buy_score += weight
+    
+            # Yutan Formasyonlar
+            if df['BULLISH_ENGULFING'].iloc[-1]:
+                weight = weights['PATTERN']['ENGULFING']
+                total_weight += weight
+                buy_score += weight
+            elif df['BEARISH_ENGULFING'].iloc[-1]:
+                weight = weights['PATTERN']['ENGULFING']
+                total_weight += weight
+                sell_score += weight
+    
+            # Morning Star ve Evening Star
+            if df['MORNING_STAR'].iloc[-1]:
+                weight = weights['PATTERN']['MORNING_STAR']
+                total_weight += weight
+                buy_score += weight
+            elif df['EVENING_STAR'].iloc[-1]:
+                weight = weights['PATTERN']['EVENING_STAR']
+                total_weight += weight
+                sell_score += weight
+    
+            # Sonuçları hesapla
+            if total_weight > 0:
+                buy_strength = buy_score / total_weight
+                sell_strength = sell_score / total_weight
+                
+                # Sinyal türünü ve gücünü belirle
+                if buy_strength > sell_strength:
+                    signal_type = 'BUY'
+                    signal_strength = buy_strength
+                elif sell_strength > buy_strength:
+                    signal_type = 'SELL'
+                    signal_strength = sell_strength
+                else:
+                    signal_type = 'HOLD'
+                    signal_strength = 0
+    
+                # Güven seviyesi hesaplama
+                confidence = abs(buy_strength - sell_strength)
+    
+                return {
+                    'type': signal_type,
+                    'strength': float(signal_strength),
+                    'confidence': float(confidence),
+                    'buy_score': float(buy_score),
+                    'sell_score': float(sell_score),
+                    'total_weight': total_weight,
+                    'buy_strength': float(buy_strength),
+                    'sell_strength': float(sell_strength),
                     'pattern_signals': {
-                        'hammer': hammer_signal,
-                        'doji': doji_signal
+                        'hammer': hammer,
+                        'doji': doji,
+                        'bullish_engulfing': bool(df['BULLISH_ENGULFING'].iloc[-1]),
+                        'bearish_engulfing': bool(df['BEARISH_ENGULFING'].iloc[-1]),
+                        'morning_star': bool(df['MORNING_STAR'].iloc[-1]),
+                        'evening_star': bool(df['EVENING_STAR'].iloc[-1])
                     }
                 }
-
-                # Sinyal kararı
-                if buy_signals > sell_signals:
-                    return {
-                        'type': 'BUY',
-                        'strength': buy_signals / total_count,
-                        **signal_info
-                    }
-                elif sell_signals > buy_signals:
-                    return {
-                        'type': 'SELL',
-                        'strength': sell_signals / total_count,
-                        **signal_info
-                    }
-
-                return {'type': 'HOLD', 'strength': 0, **signal_info}
-
+    
             return {
                 'type': 'HOLD',
-                'strength': 0,
-                'buy_count': 0,
-                'sell_count': 0,
-                'total_signals': 0,
-                'total_indicators': total_signals,
-                'pattern_signals': {}
+                'strength': 0.0,
+                'confidence': 0.0,
+                'buy_score': 0.0,
+                'sell_score': 0.0,
+                'total_weight': 0,
+                'buy_strength': 0.0,
+                'sell_strength': 0.0,
+                'pattern_signals': {
+                    'hammer': 'HOLD',
+                    'doji': 'HOLD',
+                    'bullish_engulfing': False,
+                    'bearish_engulfing': False,
+                    'morning_star': False,
+                    'evening_star': False
+                }
             }
-
+    
         except Exception as e:
             logging.error(f"Signal generation error: {str(e)}", exc_info=True)
             return {'type': 'NONE', 'reason': 'error'}
         
     def _validate_signals(self, ml_signal: dict, technical_signal: dict) -> bool:
-        """Sinyalleri doğrula"""
-        try:
-            logging.info(f"ML Sinyal: {ml_signal}")
-            logging.info(f"Teknik Sinyal: {technical_signal}")
-        
-            signal_details = (
-                f"Sinyal İstatistikleri:\n"
-                f"Alış Sinyalleri: {technical_signal.get('buy_count', 0)}\n"
-                f"Satış Sinyalleri: {technical_signal.get('sell_count', 0)}\n"
-                f"Toplam Sinyal: {technical_signal.get('total_signals', 0)}\n"
-                f"Sinyal Gücü: {technical_signal.get('strength', 0):.2f}\n"
-                f"Güven Seviyesi: {technical_signal.get('confidence', 0):.2f}\n"
-                f"ML Olasılığı: {ml_signal.get('probability', 0):.2f}"
-            )
-            logging.info(signal_details)
-    
-            if technical_signal['type'] in ['BUY', 'SELL']:
-                signal_strength = technical_signal.get('strength', 0)
-                signal_confidence = technical_signal.get('confidence', 0)
-        
-                if (ml_signal['type'] == technical_signal['type'] and 
-                    signal_strength > 0.6 and
-                    signal_confidence > 0.5 and
-                    ml_signal['probability'] > 0.55):
-            
-                    logging.info(f"✅ Sinyal Onaylandı: {technical_signal['type']}\n{signal_details}")
-                    return True
-            
-            return False
-    
-        except Exception as e:
-            logging.error(f"Sinyal doğrulama hatası: {e}")
-            return False
+      """Sinyalleri doğrula"""
+      try:
+          logging.info(f"ML Sinyal: {ml_signal}")
+          logging.info(f"Teknik Sinyal: {technical_signal}")
+          # Detaylı sinyal istatistikleri
+          signal_details = (
+              f"Sinyal İstatistikleri:\n"
+              f"Sinyal Türü: {technical_signal.get('type', 'NONE')}\n"
+              f"Alış Skoru: {technical_signal.get('buy_score', 0):.2f}\n"
+              f"Satış Skoru: {technical_signal.get('sell_score', 0):.2f}\n"
+              f"Alış Gücü: {technical_signal.get('buy_strength', 0):.2f}\n"
+              f"Satış Gücü: {technical_signal.get('sell_strength', 0):.2f}\n"
+              f"Toplam Ağırlık: {technical_signal.get('total_weight', 0)}\n"
+              f"Sinyal Gücü: {technical_signal.get('strength', 0):.2f}\n"
+              f"Güven Seviyesi: {technical_signal.get('confidence', 0):.2f}\n"
+              f"ML Olasılığı: {ml_signal.get('probability', 0):.2f}\n"
+              f"Formasyon Sinyalleri: {technical_signal.get('pattern_signals', {})}"
+          )
+          logging.info(signal_details)
+          if technical_signal['type'] in ['BUY', 'SELL']:
+              # Ana metrikler
+              signal_strength = technical_signal.get('strength', 0)
+              buy_strength = technical_signal.get('buy_strength', 0)
+              sell_strength = technical_signal.get('sell_strength', 0)
+              signal_confidence = technical_signal.get('confidence', 0)
+              ml_probability = float(ml_signal.get('probability', 0))
+              
+              # Minimum eşik değerleri
+              min_strength = 0.05       # Düşürüldü: 0.60 -> 0.05
+              min_confidence = 0.02     # Düşürüldü: 0.40 -> 0.02
+              min_ml_prob = 0.51       # Düşürüldü: 0.55 -> 0.51
+              
+              # Formasyon desteği kontrolü
+              pattern_signals = technical_signal.get('pattern_signals', {})
+              supporting_patterns = 0
+              
+              if technical_signal['type'] == 'BUY':
+                  # Alış yönünde formasyon kontrolü
+                  if pattern_signals.get('hammer') == 'BUY':
+                      supporting_patterns += 1
+                  if pattern_signals.get('bullish_engulfing'):
+                      supporting_patterns += 1
+                  if pattern_signals.get('morning_star'):
+                      supporting_patterns += 1
+                  # Doji kontrolü
+                  if pattern_signals.get('doji') == 'CAUTION' and sell_strength > buy_strength:
+                      supporting_patterns += 1
+              elif technical_signal['type'] == 'SELL':
+                  # Satış yönünde formasyon kontrolü
+                  if pattern_signals.get('evening_star'):
+                      supporting_patterns += 1
+                  if pattern_signals.get('bearish_engulfing'):
+                      supporting_patterns += 1
+                  # Doji kontrolü
+                  if pattern_signals.get('doji') == 'CAUTION' and buy_strength > sell_strength:
+                      supporting_patterns += 1
+              # Aktif formasyon sayısı
+              total_patterns = sum(1 for value in pattern_signals.values() if value and value != 'HOLD')
+              
+              # Pattern desteği oranı
+              pattern_support = supporting_patterns / max(total_patterns, 1) if total_patterns > 0 else 0
+              # ML ve Teknik sinyal uyumu kontrolü
+              signal_agreement = (
+                  (technical_signal['type'] == 'BUY' and ml_signal['type'] == 'BUY') or
+                  (technical_signal['type'] == 'SELL' and ml_signal['type'] == 'SELL')
+              )
+              # Doğrulama koşulları
+              conditions = {
+                  'Sinyal Tipi Eşleşmesi': signal_agreement,
+                  'Sinyal Gücü Yeterli': signal_strength >= min_strength,
+                  'Güven Seviyesi Yeterli': signal_confidence >= min_confidence,
+                  'ML Olasılığı Yeterli': ml_probability >= min_ml_prob
+              }
+              validation_details = "\nDoğrulama Detayları:"
+              for condition_name, condition_met in conditions.items():
+                  validation_details += f"\n{condition_name}: {condition_met}"
+              
+              validation_details += f"\nFormasyon Destek Oranı: {pattern_support:.2f}"
+              validation_details += f"\nDestekleyen Formasyon Sayısı: {supporting_patterns}"
+              validation_details += f"\nToplam Aktif Formasyon: {total_patterns}"
+              
+              logging.info(validation_details)
+              # Sinyal onaylama koşulları
+              if signal_agreement:  # ML ve Teknik sinyal aynı yönde ise
+                  if (signal_strength >= min_strength and 
+                      (signal_confidence >= min_confidence or pattern_support > 0) and
+                      ml_probability >= min_ml_prob):
+                      
+                      # Formasyon desteği varsa güven skorunu artır
+                      if pattern_support > 0:
+                          signal_confidence *= (1 + pattern_support)
+                          
+                      logging.info(f"✅ Sinyal Onaylandı: {technical_signal['type']}\n"
+                                 f"Final Güven Skoru: {signal_confidence:.2f}\n"
+                                 f"{signal_details}\n{validation_details}")
+                      return True
+                  
+              logging.info(f"❌ Sinyal Reddedildi\n{validation_details}")
+          return False
+      except Exception as e:
+          logging.error(f"Sinyal doğrulama hatası: {e}")
+          return False
 
     def is_trading_allowed(self) -> bool:
         """Trading koşullarını kontrol et"""
@@ -989,7 +1115,20 @@ class BinanceFuturesBot:
         )
         await self.send_telegram(message)
 
-
+    def reset_daily_stats(self):
+            """Günlük istatistikleri sıfırla"""
+            try:
+                # Günlük işlem sayısını ve kar/zarar istatistiklerini sıfırla
+                self.daily_stats = {
+                    'trades': 0,
+                    'profit': 0.0,
+                    'losses': 0.0
+                }
+                self.daily_trades = 0
+                self.last_daily_reset = datetime.now().date()
+                logging.info("Günlük istatistikler sıfırlandı")
+            except Exception as e:
+                logging.error(f"Günlük istatistikleri sıfırlama hatası: {str(e)}")
     async def run(self):
         """Ana bot döngüsü"""
         try:
