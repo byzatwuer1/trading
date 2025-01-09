@@ -226,6 +226,8 @@ class BinanceFuturesBot:
             # Moving Averages
             df['SMA_20'] = ta.sma(df['close'], length=20)
             df['EMA_20'] = ta.ema(df['close'], length=20)
+            df['EMA_50'] = ta.ema(df['close'], length=50)
+            df['EMA_200'] = ta.ema(df['close'], length=200)
     
             # StochRSI hesaplama
             stochrsi = ta.stochrsi(df['close'], length=14)
@@ -236,7 +238,10 @@ class BinanceFuturesBot:
             df = df.ffill().bfill()
 
             # Hesaplanan göstergeleri kontrol et
-            required_indicators = ['RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER', 'StochRSI_K', 'StochRSI_D']
+            required_indicators = [
+                'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
+                'SMA_20', 'EMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D'
+            ]
             missing_indicators = [ind for ind in required_indicators if ind not in df.columns]
 
             if missing_indicators:
@@ -250,17 +255,7 @@ class BinanceFuturesBot:
             logging.error(f"İndikatör hesaplama hatası: {str(e)}")
             return df
 
-        except Exception as e:
-            logging.error(f"İndikatör hesaplama hatası: {str(e)}")
-            return df
     
-        except Exception as e:
-            logging.error(f"İndikatör hesaplama hatası: {str(e)}")
-            return df
-        
-        except Exception as e:
-            logging.error(f"İndikatör hesaplama hatası: {str(e)}")
-            return df
 
     def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """İleri seviye indikatörleri hesapla"""
@@ -458,7 +453,7 @@ class BinanceFuturesBot:
             if doji_signal != "HOLD":
                 signals.append(doji_signal)
 
-            # Sabah Yıldızı (Morning Star) Formasyonu
+            #   Sabah Yıldızı (Morning Star) Formasyonu
             morning_star_signal = morning_star(df)
             if morning_star_signal != "HOLD":
                 signals.append(morning_star_signal)
@@ -479,7 +474,7 @@ class BinanceFuturesBot:
             elif last_row['StochRSI_K'] > 0.8:
                 signals.append('SELL')
         
-            # Sinyal kararı
+        # Sinyal kararı
             if signals:
                 buy_signals = signals.count('BUY')
                 sell_signals = signals.count('SELL')
