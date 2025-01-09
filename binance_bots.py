@@ -113,120 +113,197 @@ class BinanceFuturesBot:
             logging.error(f"Kline veri alma hatası: {e}")
             return pd.DataFrame()
 
+    def calculate_bearish_engulfing(self, df: pd.DataFrame) -> pd.Series:
+            """Yutan Ayı (Bearish Engulfing) formasyonunu hesapla"""
+            try:
+                prev_body = df['close'].shift(1) - df['open'].shift(1)
+                curr_body = df['close'] - df['open']
+
+                return ((prev_body > 0) & 
+                        (curr_body < 0) & 
+                        (df['open'] > df['close'].shift(1)) & 
+                        (df['close'] < df['open'].shift(1))).astype(int)
+            except Exception as e:
+                logging.error(f"Bearish Engulfing hesaplama hatası: {str(e)}")
+                return pd.Series(0, index=df.index)
+    def calculate_morning_star(self, df: pd.DataFrame) -> pd.Series:
+           """Sabah Yıldızı (Morning Star) formasyonunu hesapla"""
+           try:
+               result = pd.Series(0, index=df.index)
+               for i in range(2, len(df)):
+                   if (df['close'].iloc[i - 2] < df['open'].iloc[i - 2] and
+                       abs(df['close'].iloc[i - 1] - df['open'].iloc[i - 1]) < (df['high'].iloc[i - 1] - df['low'].iloc[i - 1]) * 0.1 and
+                       df['close'].iloc[i] > df['open'].iloc[i] and
+                       df['close'].iloc[i] > df['open'].iloc[i - 2]):
+                       result.iloc[i] = 1
+               return result
+           except Exception as e:
+               logging.error(f"Morning Star hesaplama hatası: {str(e)}")
+               return pd.Series(0, index=df.index)
+    def calculate_evening_star(self, df: pd.DataFrame) -> pd.Series:
+        """Akşam Yıldızı (Evening Star) formasyonunu hesapla"""
+        try:
+            result = pd.Series(0, index=df.index)
+            for i in range(2, len(df)):
+                if (df['close'].iloc[i - 2] > df['open'].iloc[i - 2] and
+                    abs(df['close'].iloc[i - 1] - df['open'].iloc[i - 1]) < (df['high'].iloc[i - 1] - df['low'].iloc[i - 1]) * 0.1 and
+                    df['close'].iloc[i] < df['open'].iloc[i] and
+                    df['close'].iloc[i] < df['open'].iloc[i - 2]):
+                    result.iloc[i] = 1
+            return result
+        except Exception as e:
+            logging.error(f"Evening Star hesaplama hatası: {str(e)}")
+            return pd.Series(0, index=df.index)
+    def calculate_three_white_soldiers(self, df: pd.DataFrame) -> pd.Series:
+        """Üç Beyaz Asker (Three White Soldiers) formasyonunu hesapla"""
+        try:
+            result = pd.Series(0, index=df.index)
+            for i in range(2, len(df)):
+                if (df['close'].iloc[i] > df['open'].iloc[i] and
+                    df['close'].iloc[i - 1] > df['open'].iloc[i - 1] and
+                    df['close'].iloc[i - 2] > df['open'].iloc[i - 2] and
+                    df['close'].iloc[i] > df['close'].iloc[i - 1] > df['close'].iloc[i - 2]):
+                    result.iloc[i] = 1
+            return result
+        except Exception as e:
+            logging.error(f"Three White Soldiers hesaplama hatası: {str(e)}")
+            return pd.Series(0, index=df.index)
+    def calculate_three_black_crows(self, df: pd.DataFrame) -> pd.Series:
+        """Üç Siyah Karga (Three Black Crows) formasyonunu hesapla"""
+        try:
+            result = pd.Series(0, index=df.index)
+            for i in range(2, len(df)):
+                if (df['close'].iloc[i] < df['open'].iloc[i] and
+                    df['close'].iloc[i - 1] < df['open'].iloc[i - 1] and
+                    df['close'].iloc[i - 2] < df['open'].iloc[i - 2] and
+                    df['close'].iloc[i] < df['close'].iloc[i - 1] < df['close'].iloc[i - 2]):
+                    result.iloc[i] = 1
+            return result
+        except Exception as e:
+            logging.error(f"Three Black Crows hesaplama hatası: {str(e)}")
+            return pd.Series(0, index=df.index)
+
 
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Temel ve gelişmiş teknik indikatörleri hesapla"""
         try:
             logging.info("Calculating technical indicators...")
-    
+
+            # Gerekli sütunları kontrol et
+            required_columns = ['high', 'low', 'close', 'open']
+            if not all(col in df.columns for col in required_columns):
+                missing = [col for col in required_columns if col not in df.columns]
+                logging.error(f"Missing required columns: {missing}")
+                return df
+
+            # Minimum veri uzunluğu kontrolü
+            if len(df) < 52:  # Ichimoku için minimum 52 periyot gerekli
+                logging.warning("Not enough data for calculations")
+                return df
+
             # ---- TEMEL İNDİKATÖRLER ----
             # RSI hesaplama
             df['RSI'] = ta.rsi(df['close'], length=14)
-    
+
             # MACD hesaplama
             macd_data = ta.macd(df['close'])
             df['MACD'] = macd_data['MACD_12_26_9']
             df['MACD_SIGNAL'] = macd_data['MACDs_12_26_9']
             df['MACD_HIST'] = macd_data['MACDh_12_26_9']
-    
+
             # Bollinger Bands hesaplama
             bollinger = ta.bbands(df['close'], length=20, std=2)
             df['BB_UPPER'] = bollinger['BBU_20_2.0']
             df['BB_MIDDLE'] = bollinger['BBM_20_2.0']
             df['BB_LOWER'] = bollinger['BBL_20_2.0']
-    
+
             # Moving Averages
             df['SMA_20'] = ta.sma(df['close'], length=20)
             df['EMA_20'] = ta.ema(df['close'], length=20)
             df['EMA_50'] = ta.ema(df['close'], length=50)
             df['EMA_200'] = ta.ema(df['close'], length=200)
-    
+
             # StochRSI hesaplama
             stochrsi = ta.stochrsi(df['close'], length=14)
             df['StochRSI_K'] = stochrsi['STOCHRSIk_14_14_3_3']
             df['StochRSI_D'] = stochrsi['STOCHRSId_14_14_3_3']
-            df['StochRSI'] = df['StochRSI_K']  # Ana StochRSI göstergesi
-    
+            df['StochRSI'] = df['StochRSI_K']
+
             # ---- GELİŞMİŞ İNDİKATÖRLER ----
             # ADX (Average Directional Index)
             adx = ta.adx(df['high'], df['low'], df['close'], length=14)
             df['ADX'] = adx['ADX_14']
             df['DI_plus'] = adx['DMP_14']
             df['DI_minus'] = adx['DMN_14']
-    
-            # Ichimoku Cloud (dönen değerlere göre ayarlandı)
-            ichimoku = ta.ichimoku(df['high'], df['low'], df['close'])
-            df['ICHIMOKU_CONVERSION'] = ichimoku[0]
-            df['ICHIMOKU_BASE'] = ichimoku[1]
-            if len(ichimoku) > 2:
-                df['ICHIMOKU_SPAN_A'] = ichimoku[2]
-                df['ICHIMOKU_SPAN_B'] = ichimoku[3]
-    
+
+            # Ichimoku Cloud - Düzeltilmiş versiyon
+          # Ichimoku Cloud - Düzeltilmiş versiyon
+            # Ichimoku Cloud - Düzeltilmiş versiyon
+            try:
+                ichimoku = ta.ichimoku(df['high'], df['low'], df['close'])
+                if isinstance(ichimoku, pd.DataFrame):
+                    logging.info(f"Ichimoku columns: {ichimoku.columns.tolist()}")  # Add logging to check column names
+                    ichimoku_columns = {
+                        'ISA_9': 'ICHIMOKU_SPAN_A',
+                        'ISB_26': 'ICHIMOKU_SPAN_B',
+                        'ITS_9': 'ICHIMOKU_CONVERSION',
+                        'IKS_26': 'ICHIMOKU_BASE'
+                    }
+                    for old_name, new_name in ichimoku_columns.items():
+                        if old_name in ichimoku.columns:
+                            df[new_name] = ichimoku[old_name]
+                        else:
+                            logging.warning(f"Missing Ichimoku column: {old_name}")  # Add logging for missing columns
+            except Exception as e:
+                logging.error(f"Ichimoku calculation error: {str(e)}")
+
             # ---- MUM FORMASYONLARI ----
-            # Doji formasyonu
             df['DOJI'] = self.calculate_doji(df)
-            
-            # Çekiç (Hammer) formasyonu
             df['HAMMER'] = self.calculate_hammer(df)
-            
-            # Yutan formasyonları
             df['BULLISH_ENGULFING'] = self.calculate_bullish_engulfing(df)
             df['BEARISH_ENGULFING'] = self.calculate_bearish_engulfing(df)
-            
-            # Morning Star ve Evening Star
             df['MORNING_STAR'] = self.calculate_morning_star(df)
             df['EVENING_STAR'] = self.calculate_evening_star(df)
-            
-            # Üç asker formasyonları
             df['THREE_WHITE_SOLDIERS'] = self.calculate_three_white_soldiers(df)
             df['THREE_BLACK_CROWS'] = self.calculate_three_black_crows(df)
-    
+
             # ---- MOMENTUM İNDİKATÖRLERİ ----
-            # ROC (Rate of Change)
             df['ROC'] = ta.roc(df['close'], length=9)
-            
-            # Williams %R
             df['WILLIAMS_R'] = ta.willr(df['high'], df['low'], df['close'], length=14)
-            
-            # CCI (Commodity Channel Index)
             df['CCI'] = ta.cci(df['high'], df['low'], df['close'], length=20)
-    
+
             # ---- VOLATILITE İNDİKATÖRLERİ ----
-            # ATR (Average True Range)
             df['ATR'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-            
+
             # ---- HACİM İNDİKATÖRLERİ ----
             if 'volume' in df.columns:
-                # OBV (On Balance Volume)
                 df['OBV'] = ta.obv(df['close'], df['volume'])
-                
-                # VWAP (Volume Weighted Average Price)
                 df['VWAP'] = self.calculate_vwap(df)
-    
+
             # NaN değerleri temizle
             df = df.ffill().bfill()
-    
+
             # Hesaplanan göstergeleri kontrol et
             required_indicators = [
                 'RSI', 'MACD', 'MACD_SIGNAL', 'BB_UPPER', 'BB_LOWER',
                 'SMA_20', 'EMA_20', 'EMA_50', 'EMA_200', 'StochRSI_K', 'StochRSI_D',
                 'ADX', 'ICHIMOKU_CONVERSION', 'ICHIMOKU_BASE'
             ]
-            
+
             missing_indicators = [ind for ind in required_indicators if ind not in df.columns]
-    
+
             if missing_indicators:
                 logging.warning(f"Missing indicators after calculation: {missing_indicators}")
             else:
                 logging.info("All required indicators calculated successfully")
-    
+
             return df
-    
+
         except Exception as e:
             logging.error(f"İndikatör hesaplama hatası: {str(e)}", exc_info=True)
             return df
-    
+
     def calculate_doji(self, df: pd.DataFrame) -> pd.Series:
         """Doji mum formasyonunu hesapla"""
         try:
@@ -236,32 +313,33 @@ class BinanceFuturesBot:
         except Exception as e:
             logging.error(f"Doji hesaplama hatası: {str(e)}")
             return pd.Series(0, index=df.index)
-    
+
     def calculate_hammer(self, df: pd.DataFrame) -> pd.Series:
         """Çekiç formasyonunu hesapla"""
         try:
             body = abs(df['close'] - df['open'])
-            lower_wick = min(df['open'], df['close']) - df['low']
-            upper_wick = df['high'] - max(df['open'], df['close'])
-            
+            lower_wick = df[['open', 'close']].min(axis=1) - df['low']
+            upper_wick = df['high'] - df[['open', 'close']].max(axis=1)
+
             return ((lower_wick > (body * 2)) & (upper_wick <= (body * 0.1))).astype(int)
         except Exception as e:
             logging.error(f"Hammer hesaplama hatası: {str(e)}")
             return pd.Series(0, index=df.index)
-    
+
     def calculate_bullish_engulfing(self, df: pd.DataFrame) -> pd.Series:
         """Yutan boğa formasyonunu hesapla"""
         try:
             prev_body = df['close'].shift(1) - df['open'].shift(1)
             curr_body = df['close'] - df['open']
-            
-            return ((prev_body < 0) & (curr_body > 0) & 
+
+            return ((prev_body < 0) & 
+                    (curr_body > 0) & 
                     (df['open'] < df['close'].shift(1)) & 
                     (df['close'] > df['open'].shift(1))).astype(int)
         except Exception as e:
             logging.error(f"Bullish Engulfing hesaplama hatası: {str(e)}")
             return pd.Series(0, index=df.index)
-    
+
     def calculate_vwap(self, df: pd.DataFrame) -> pd.Series:
         """VWAP (Volume Weighted Average Price) hesapla"""
         try:
@@ -270,7 +348,8 @@ class BinanceFuturesBot:
         except Exception as e:
             logging.error(f"VWAP hesaplama hatası: {str(e)}")
             return pd.Series(0, index=df.index)
-    
+
+
 
     def calculate_advanced_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """İleri seviye indikatörleri hesapla"""
