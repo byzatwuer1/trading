@@ -605,43 +605,86 @@ class BinanceFuturesBot:
                 df['close'].iloc[i] > df['close'].iloc[i - 1] > df['close'].iloc[i - 2]):
                 return "BUY"
         return "HOLD"
-    
+   
 
     def generate_ml_signals(self, df: pd.DataFrame) -> dict:
         """ML sinyalleri üret"""
         try:
-            # Özellik isimlerini belirterek DataFrame oluştur
-            feature_names = [
+            # DataFrame'i kopyala
+            df_features = df.copy()
+            
+            # Temel özellikleri hesapla
+            df_features['Price_Change'] = df_features['close'].pct_change()
+            df_features['Volume_Change'] = df_features['volume'].pct_change()
+            df_features['Daily_Return'] = (df_features['close'] - df_features['open']) / df_features['open']
+            
+            # Moving averages
+            df_features['SMA_20'] = df_features['close'].rolling(window=20).mean()
+            df_features['EMA_20'] = df_features['close'].ewm(span=20, adjust=False).mean()
+            
+            # Volatilite
+            df_features['Volatility'] = df_features['close'].rolling(window=20).std()
+            
+            # RSI
+            df_features['RSI'] = ta.rsi(df_features['close'], length=14)
+            
+            # MACD basitleştirilmiş
+            ema12 = df_features['close'].ewm(span=12, adjust=False).mean()
+            ema26 = df_features['close'].ewm(span=26, adjust=False).mean()
+            df_features['MACD'] = ema12 - ema26
+    
+            # Özellik seçimi - train_model.py ile aynı sıra ve isimde olmalı
+            feature_columns = [
                 'open', 'high', 'low', 'close', 'volume',
                 'Price_Change', 'Volume_Change', 'Daily_Return',
                 'SMA_20', 'EMA_20', 'Volatility', 'RSI', 'MACD'
             ]
-            features = df[feature_names].iloc[-1].to_frame().T
             
-            # Loglama: Özelliklerin kontrolü
-            logging.info(f"Features: {features}")
-    
+            # Son satırı al ve özellikleri hazırla
+            features = df_features[feature_columns].iloc[-1].to_frame().T
+            
+            # Debug için özellikleri logla
+            logging.info(f"Features before cleaning: {features.to_dict('records')}")
+            
+            # Sonsuz ve aşırı değerleri temizle
+            features = clean_infinite_values(features)
+            
+            # NaN değerleri doldur
+            features = features.fillna(method='ffill')
+            features = features.fillna(method='bfill')
+            features = features.fillna(0)
+            
+            # Debug için özellikleri logla
+            logging.info(f"Features after cleaning: {features.to_dict('records')}")
+            
             # Ölçeklendirme işlemi
             scaled_features = self.scaler.transform(features)
             
-            # Loglama: Ölçeklendirilmiş özelliklerin kontrolü
-            logging.info(f"Scaled Features: {scaled_features}")
+            # Debug için ölçeklendirilmiş özellikleri logla
+            logging.info(f"Scaled features: {scaled_features}")
             
             # Tahmin
             prediction = self.model.predict(scaled_features)
-            probability = self.model.predict_proba(scaled_features)[0][prediction[0]]
+            probabilities = self.model.predict_proba(scaled_features)
+            probability = probabilities[0][prediction[0]]
             
-            # Loglama: Tahmin ve olasılıklar
-            logging.info(f"Prediction: {prediction}, Probability: {probability}")
+            # Debug için tahmin ve olasılıkları logla
+            logging.info(f"Prediction: {prediction}, Probabilities: {probabilities}")
             
             return {
                 'type': 'BUY' if prediction[0] == 1 else 'SELL',
-                'probability': probability
+                'probability': float(probability)
             }
+            
         except Exception as e:
             logging.error(f"ML sinyal üretim hatası: {e}")
-            return {'type': 'NONE', 'probability': 0.0} 
-    
+            return {'type': 'NONE', 'probability': 0.0}
+        
+
+
+
+
+        
     def generate_signals(self, df: pd.DataFrame) -> dict:
         """Teknik analiz sinyalleri üret"""
         try:
