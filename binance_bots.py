@@ -836,9 +836,9 @@ class BinanceFuturesBot:
               ml_probability = float(ml_signal.get('probability', 0))
               
               # Minimum eşik değerleri
-              min_strength = 0.05       # Düşürüldü: 0.60 -> 0.05
-              min_confidence = 0.02     # Düşürüldü: 0.40 -> 0.02
-              min_ml_prob = 0.51       # Düşürüldü: 0.55 -> 0.51
+              min_strength = 0.6       # Düşürüldü: 0.60 -> 0.05
+              min_confidence = 0.04     # Düşürüldü: 0.40 -> 0.02
+              min_ml_prob = 0.65      # Düşürüldü: 0.55 -> 0.51
               
               # Formasyon desteği kontrolü
               pattern_signals = technical_signal.get('pattern_signals', {})
@@ -992,7 +992,7 @@ class BinanceFuturesBot:
             try:
                 self.client.change_leverage(
                     symbol=symbol,
-                    leverage=5
+                    leverage=6
                 )
                 logging.info(f"Kaldıraç ayarlandı: {symbol} 5x")
             except Exception as e:
