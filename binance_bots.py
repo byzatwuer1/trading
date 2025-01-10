@@ -610,25 +610,38 @@ class BinanceFuturesBot:
     def generate_ml_signals(self, df: pd.DataFrame) -> dict:
         """ML sinyalleri üret"""
         try:
-        # Özellik isimlerini belirterek DataFrame oluştur
-            feature_names = ['open', 'high', 'low', 'close', 'volume']
+            # Özellik isimlerini belirterek DataFrame oluştur
+            feature_names = [
+                'open', 'high', 'low', 'close', 'volume',
+                'Price_Change', 'Volume_Change', 'Daily_Return',
+                'SMA_20', 'EMA_20', 'Volatility', 'RSI', 'MACD'
+            ]
             features = df[feature_names].iloc[-1].to_frame().T
-        
+            
+            # Loglama: Özelliklerin kontrolü
+            logging.info(f"Features: {features}")
+    
             # Ölçeklendirme işlemi
             scaled_features = self.scaler.transform(features)
-        
+            
+            # Loglama: Ölçeklendirilmiş özelliklerin kontrolü
+            logging.info(f"Scaled Features: {scaled_features}")
+            
             # Tahmin
             prediction = self.model.predict(scaled_features)
             probability = self.model.predict_proba(scaled_features)[0][prediction[0]]
-        
+            
+            # Loglama: Tahmin ve olasılıklar
+            logging.info(f"Prediction: {prediction}, Probability: {probability}")
+            
             return {
-            'type': 'BUY' if prediction[0] == 1 else 'SELL',
-            'probability': probability
-        }
+                'type': 'BUY' if prediction[0] == 1 else 'SELL',
+                'probability': probability
+            }
         except Exception as e:
             logging.error(f"ML sinyal üretim hatası: {e}")
-        return {'type': 'NONE', 'probability': 0.0}
-
+            return {'type': 'NONE', 'probability': 0.0} 
+    
     def generate_signals(self, df: pd.DataFrame) -> dict:
         """Teknik analiz sinyalleri üret"""
         try:
@@ -836,9 +849,9 @@ class BinanceFuturesBot:
               ml_probability = float(ml_signal.get('probability', 0))
               
               # Minimum eşik değerleri
-              min_strength = 0.6       # Düşürüldü: 0.60 -> 0.05
-              min_confidence = 0.04     # Düşürüldü: 0.40 -> 0.02
-              min_ml_prob = 0.65      # Düşürüldü: 0.55 -> 0.51
+              min_strength = 1.2       # Düşürüldü: 0.60 -> 0.05
+              min_confidence = 1     # Düşürüldü: 0.40 -> 0.02
+              min_ml_prob = 0.65       # Düşürüldü: 0.55 -> 0.51
               
               # Formasyon desteği kontrolü
               pattern_signals = technical_signal.get('pattern_signals', {})
@@ -992,7 +1005,7 @@ class BinanceFuturesBot:
             try:
                 self.client.change_leverage(
                     symbol=symbol,
-                    leverage=6
+                    leverage=5
                 )
                 logging.info(f"Kaldıraç ayarlandı: {symbol} 5x")
             except Exception as e:
